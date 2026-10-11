@@ -9,7 +9,7 @@ import "net/http"
 
 type Master struct {
 	// Your definitions here.
-
+test
 }
 
 // Your code here -- RPC handlers for the worker to call.
