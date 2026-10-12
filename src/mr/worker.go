@@ -33,6 +33,44 @@ func reduceName(jobName string, mapTask int, reduceTask int) string {
 	return fmt.Sprintf("mrtmp.%s-%d-%d", jobName, mapTask, reduceTask)
 }
 
+func doMap(jobName string, mapTask int, filename string, nReduce int, mapf func(string, string) []KeyValue,) {
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		log.Fatalf("cannot read %v: %v", filename, err)
+	}
+
+	kva := mapf(filename, string(data))
+
+	files := make([]*os.File, nReduce)
+	encoders := make([]*json.Encoder, nReduce)
+
+	for r := 0; r < nReduce; r++ {
+		name := reduceName(jobName, mapTask, r)
+
+		file, err := os.Create(name)
+		if err != nil {
+			log.Fatalf("cannot create %v: %v", name, err)
+		}
+
+		files[r] = file
+		encoders[r] = json.NewEncoder(file)
+	}
+
+	for _, kv := range kva {
+		r := ihash(kv.Key) % nReduce
+
+		err := encoders[r].Encode(&kv)
+		if err != nil {
+			log.Fatalf("cannot encode intermediate value: %v", err)
+		}
+	}
+
+	for _, file := range files {
+		file.Close()
+	}
+}
+
+
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
