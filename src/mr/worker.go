@@ -4,6 +4,11 @@ import "fmt"
 import "log"
 import "net/rpc"
 import "hash/fnv"
+import "encoding/json"
+import "io"
+import "io/ioutil"
+import "os"
+import "sort"
 
 
 //
@@ -24,6 +29,9 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
+func reduceName(jobName string, mapTask int, reduceTask int) string {
+	return fmt.Sprintf("mrtmp.%s-%d-%d", jobName, mapTask, reduceTask)
+}
 
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
