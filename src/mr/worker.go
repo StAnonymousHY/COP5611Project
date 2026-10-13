@@ -70,6 +70,71 @@ func doMap(jobName string, mapTask int, filename string, nReduce int, mapf func(
 	}
 }
 
+func doReduce(jobName string, reduceTask int, outFile string, nMap int, reducef func(string, []string) string) {
+	groups := make(map[string][]string)
+
+	for m := 0; m < nMap; m++ {
+		name := reduceName(jobName, m, reduceTask)
+
+		file, err := os.Open(name)
+		if err != nil {
+			log.Fatalf("cannot open %v: %v", name, err)
+		}
+
+		decoder := json.NewDecoder(file)
+
+		for {
+			var kv KeyValue
+
+			err := decoder.Decode(&kv)
+
+			if err == io.EOF {
+				break
+			}
+
+			if err != nil {
+				file.Close()
+				log.Fatalf("cannot decode %v: %v", name, err)
+			}
+
+			groups[kv.Key] = append(
+				groups[kv.Key],
+				kv.Value,
+			)
+		}
+
+		file.Close()
+	}
+
+	keys := make([]string, 0, len(groups))
+
+	for key := range groups {
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	output, err := os.Create(outFile)
+	if err != nil {
+		log.Fatalf("cannot create %v: %v", outFile, err)
+	}
+	defer output.Close()
+
+	encoder := json.NewEncoder(output)
+
+	for _, key := range keys {
+		result := reducef(key, groups[key])
+
+		kv := KeyValue{
+			Key:   key,
+			Value: result,
+		}
+
+		if err := encoder.Encode(&kv); err != nil {
+			log.Fatalf("cannot write reduce output: %v", err)
+		}
+	}
+}
 
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
