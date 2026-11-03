@@ -8,7 +8,20 @@ import "net/http"
 
 
 type Master struct {
-	// Your definitions here.
+	mu sync.Mutex
+
+	files   []string
+	nReduce int
+
+	phase TaskType
+
+	mapTaskStatus    []int
+	mapTaskAttempts  []int
+	mapTaskStartTime []time.Time
+
+	reduceTaskStatus    []int
+	reduceTaskAttempts  []int
+	reduceTaskStartTime []time.Time
 }
 
 // Your code here -- RPC handlers for the worker to call.
