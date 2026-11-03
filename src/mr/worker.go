@@ -33,6 +33,14 @@ func reduceName(jobName string, mapTask int, reduceTask int) string {
 	return fmt.Sprintf("mrtmp.%s-%d-%d", jobName, mapTask, reduceTask)
 }
 
+func mergeName(jobName string, reduceTask int) string {
+	return fmt.Sprintf(
+		"mrtmp.%s-res-%d",
+		jobName,
+		reduceTask,
+	)
+}
+
 func doMap(jobName string, mapTask int, filename string, nReduce int, mapf func(string, string) []KeyValue,) {
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
