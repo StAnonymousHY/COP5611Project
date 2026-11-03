@@ -1,21 +1,39 @@
+
 package mr
 
 //
 // RPC definitions.
 //
 
-//
-// example to show how to declare the arguments
-// and reply for an RPC.
-//
+type TaskType int
 
-type ExampleArgs struct {
-	X int
+const (
+	MapTask TaskType = iota
+	ReduceTask
+	WaitTask
+	ExitTask
+)
+
+type RequestTaskArgs struct {
 }
 
-type ExampleReply struct {
-	Y int
+type RequestTaskReply struct {
+	TaskType TaskType
+
+	TaskID  int
+	Attempt int
+
+	Filename string
+	NReduce  int
+
+	NMap int
 }
 
-// Add your RPC definitions here.
+type ReportTaskArgs struct {
+	TaskType TaskType
+	TaskID   int
+	Attempt  int
+}
 
+type ReportTaskReply struct {
+}
