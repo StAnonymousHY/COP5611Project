@@ -32,11 +32,209 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
-	// Your worker implementation here.
+	for {
+		args := RequestTaskArgs{}
+		reply := RequestTaskReply{}
 
-	// uncomment to send the Example RPC to the master.
-	// CallExample()
+		ok := call("Master.RequestTask", &args, &reply)
+		if !ok {
+			return
+		}
 
+		switch reply.TaskType {
+
+		case MapTask:
+			err := doMap(reply, mapf)
+			if err != nil {
+				log.Printf("map task failed: %v", err)
+				return
+			}
+
+			report := ReportTaskArgs{
+				TaskType: MapTask,
+				TaskID:   reply.TaskID,
+				Attempt:  reply.Attempt,
+			}
+
+			result := ReportTaskReply{}
+			if !call("Master.ReportTask", &report, &result) {
+				return
+			}
+
+		case ReduceTask:
+			err := doReduce(reply, reducef)
+			if err != nil {
+				log.Printf("reduce task failed: %v", err)
+				return
+			}
+
+			report := ReportTaskArgs{
+				TaskType: ReduceTask,
+				TaskID:   reply.TaskID,
+				Attempt:  reply.Attempt,
+			}
+
+			result := ReportTaskReply{}
+			if !call("Master.ReportTask", &report, &result) {
+				return
+			}
+
+		case WaitTask:
+			time.Sleep(time.Second)
+
+		case ExitTask:
+			return
+
+		default:
+			time.Sleep(time.Second)
+		}
+	}
+}
+
+func doMap(
+	task RequestTaskReply,
+	mapf func(string, string) []KeyValue,
+) error {
+
+	data, err := os.ReadFile(task.Filename)
+	if err != nil {
+		return err
+	}
+
+	kva := mapf(task.Filename, string(data))
+
+	if task.NReduce <= 0 {
+		return fmt.Errorf("invalid number of reduce tasks")
+	}
+
+	files := make([]*os.File, task.NReduce)
+	encoders := make([]*json.Encoder, task.NReduce)
+
+	for i := 0; i < task.NReduce; i++ {
+		file, err := os.CreateTemp(".", "mr-map-*")
+		if err != nil {
+			return err
+		}
+
+		files[i] = file
+		encoders[i] = json.NewEncoder(file)
+	}
+
+	for _, kv := range kva {
+		reduceID := ihash(kv.Key) % task.NReduce
+
+		err := encoders[reduceID].Encode(&kv)
+		if err != nil {
+			return err
+		}
+	}
+
+	for i, file := range files {
+		err := file.Close()
+		if err != nil {
+			return err
+		}
+
+		finalName := fmt.Sprintf(
+			"mr-%d-%d",
+			task.TaskID,
+			i,
+		)
+
+		err = os.Rename(file.Name(), finalName)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func doReduce(
+	task RequestTaskReply,
+	reducef func(string, []string) string,
+) error {
+
+	groups := make(map[string][]string)
+
+	for i := 0; i < task.NMap; i++ {
+		filename := fmt.Sprintf(
+			"mr-%d-%d",
+			i,
+			task.TaskID,
+		)
+
+		file, err := os.Open(filename)
+		if err != nil {
+			return err
+		}
+
+		decoder := json.NewDecoder(file)
+
+		for {
+			var kv KeyValue
+
+			err := decoder.Decode(&kv)
+
+			if err == io.EOF {
+				break
+			}
+
+			if err != nil {
+				file.Close()
+				return err
+			}
+
+			groups[kv.Key] = append(
+				groups[kv.Key],
+				kv.Value,
+			)
+		}
+
+		if err := file.Close(); err != nil {
+			return err
+		}
+	}
+
+	keys := make([]string, 0, len(groups))
+
+	for key := range groups {
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	output, err := os.CreateTemp(".", "mr-reduce-*")
+	if err != nil {
+		return err
+	}
+
+	for _, key := range keys {
+		value := reducef(key, groups[key])
+
+		_, err := fmt.Fprintf(
+			output,
+			"%v %v\n",
+			key,
+			value,
+		)
+
+		if err != nil {
+			output.Close()
+			return err
+		}
+	}
+
+	if err := output.Close(); err != nil {
+		return err
+	}
+
+	finalName := fmt.Sprintf(
+		"mr-out-%d",
+		task.TaskID,
+	)
+
+	return os.Rename(output.Name(), finalName)
 }
 
 //
