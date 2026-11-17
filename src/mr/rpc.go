@@ -22,6 +22,12 @@ const (
 	ExitTask
 )
 
+const (
+    Idle = iota
+    InProgress
+    Completed
+)
+
 type RequestTaskArgs struct {
 }
 
